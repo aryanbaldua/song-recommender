@@ -109,4 +109,54 @@ object Pipeline {
       .groupByKey()
       .mapValues { it => it.toArray.sortBy(-_._2).take(topN) }
   }
+
+  def splitProfiles(profiles: RDD[(Int, Array[(Int, Double)])], seed: Long)
+      : RDD[(Int, (Array[(Int, Double)], Array[Int]))] = {
+    profiles.map { case (u, arr) =>
+      val r = new scala.util.Random(seed + u)
+      val vis = scala.collection.mutable.ArrayBuffer[(Int, Double)]()
+      val held = scala.collection.mutable.ArrayBuffer[Int]()
+      var i = 0
+      while (i < arr.length) {
+        if (r.nextBoolean()) held += arr(i)._1 else vis += arr(i)
+        i += 1
+      }
+      (u, (vis.toArray, held.toArray))
+    }.filter { case (_, (vis, held)) => vis.nonEmpty && held.nonEmpty }
+  }
+
+  def popularSongs(profiles: RDD[(Int, Array[(Int, Double)])], n: Int): Array[Int] = {
+    profiles
+      .flatMap { case (_, arr) => arr.map { case (s, _) => (s, 1) } }
+      .reduceByKey(_ + _)
+      .map { case (s, c) => (c, s) }
+      .sortByKey(ascending = false)
+      .map(_._2)
+      .take(n)
+  }
+
+  def metrics(recs: RDD[(Int, Array[Int])], held: RDD[(Int, Array[Int])], k: Int)
+      : (Double, Double, Double) = {
+    val per = held.leftOuterJoin(recs).map { case (_, (h, recOpt)) =>
+      val heldSet = h.toSet
+      val top = recOpt.getOrElse(Array.empty[Int]).take(k)
+      var hits = 0.0
+      var sumPrec = 0.0
+      var idx = 0
+      while (idx < top.length) {
+        if (heldSet.contains(top(idx))) { hits += 1.0; sumPrec += hits / (idx + 1.0) }
+        idx += 1
+      }
+      val precision = hits / k
+      val recall = if (heldSet.nonEmpty) hits / heldSet.size else 0.0
+      val denom = math.min(k, heldSet.size)
+      val ap = if (denom > 0) sumPrec / denom else 0.0
+      (precision, recall, ap, 1)
+    }
+    val z = (0.0, 0.0, 0.0, 0)
+    val s = per.aggregate(z)(
+      (a, x) => (a._1 + x._1, a._2 + x._2, a._3 + x._3, a._4 + x._4),
+      (a, b) => (a._1 + b._1, a._2 + b._2, a._3 + b._3, a._4 + b._4))
+    if (s._4 == 0) (0.0, 0.0, 0.0) else (s._1 / s._4, s._2 / s._4, s._3 / s._4)
+  }
 }
