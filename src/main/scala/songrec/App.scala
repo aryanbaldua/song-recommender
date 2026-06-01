@@ -33,6 +33,11 @@ object App {
       .flatMap { case (s, nbrs) => nbrs.map { case (n, sim) => s"$s\t$n\t$sim" } }
       .saveAsTextFile(output + "/model")
 
+    val recs = Pipeline.recommend(profiles, model, p.topN)
+    recs
+      .flatMap { case (u, items) => items.map { case (s, w) => s"$u\t$s\t$w" } }
+      .saveAsTextFile(output + "/recommendations")
+
     sc.stop()
   }
 }

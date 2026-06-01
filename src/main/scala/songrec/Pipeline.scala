@@ -89,4 +89,24 @@ object Pipeline {
 
     sims.groupByKey().mapValues { it => it.toArray.sortBy(-_._2).take(topK) }
   }
+
+  def recommend(
+      profiles: RDD[(Int, Array[(Int, Double)])],
+      model: RDD[(Int, Array[(Int, Double)])],
+      topN: Int): RDD[(Int, Array[(Int, Double)])] = {
+
+    val userSong = profiles.flatMap { case (u, arr) => arr.map { case (s, w) => (s, (u, w)) } }
+
+    val scored = userSong.join(model).flatMap { case (_, ((u, w), nbrs)) =>
+      nbrs.map { case (n, sim) => ((u, n), w * sim) }
+    }.reduceByKey(_ + _)
+
+    val heard = profiles.flatMap { case (u, arr) => arr.map { case (s, _) => ((u, s), 1) } }
+
+    scored.leftOuterJoin(heard)
+      .filter(_._2._2.isEmpty)
+      .map { case ((u, s), (w, _)) => (u, (s, w)) }
+      .groupByKey()
+      .mapValues { it => it.toArray.sortBy(-_._2).take(topN) }
+  }
 }
