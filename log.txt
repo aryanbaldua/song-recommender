@@ -1,0 +1,35 @@
+Project Work Log
+Aryan, Sathvik
+
+*Note* - All the work was done together either in person or over zoom
+
+5/18 - in person - 1.5h
+Project kickoff. Picked the Million Song Dataset (Echo Nest Taste Profile),
+downloaded the triplets, set up the repo, got Spark running locally on a
+small sample.
+
+5/20 - zoom - 1.5h
+Data prep - parsing the triplets, re-indexing the hash IDs to integers,
+sparsity filtering, and the log transform on play counts. Tested on the sample.
+
+5/22 - zoom - 2h
+The from-scratch item-item cosine similarity on RDDs - per-user pair generation,
+reduceByKey for the dot products, per-song norms. Spent a while debugging a
+double-counting bug in the pair keys.
+
+5/24 - in person - 1.5h
+Scaling stuff - per-user profile cap, co-occurrence pruning, top-K similar songs
+per song. Got our first real runs going on the Cal Poly cluster.
+
+5/26 - zoom - 1.5h
+Recommendation generation and the evaluation harness (precision, recall,
+MAP, F1) plus the popularity baseline to compare against.
+
+5/28 - in person - 1.5h
+Ran the whole thing on the full dataset on the cluster. Pulled the metrics, the
+lift over the baseline, and the scale numbers (pair counts, shuffle size, runtime).
+
+5/30 - zoom - 1.5h
+Wrote the report, put the slides together, ran through the presentation a couple times.
+
+total: ~11 hours

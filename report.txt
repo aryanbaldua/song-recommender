@@ -1,0 +1,93 @@
+Music Recommendation on the Million Song Dataset
+Item-item collaborative filtering on Spark
+Aryan, Sathvik
+
+
+WHAT WE DID
+
+We built a music recommender on the Million Song Dataset (the Echo Nest Taste
+Profile, about 48 million play records). The idea is simple - given the songs a
+person has listened to, recommend songs they haven't heard yet by finding songs
+that tend to get played by the same people. The heart of the project, the
+song-to-song similarity, is written from scratch using only Spark RDDs.
+
+We developed and tested everything on a small sample locally, then ran the full
+dataset on the Cal Poly YARN cluster (Spark 2.3.2). Our claim was that a
+personalized recommender should clearly beat just handing everyone the most
+popular songs, and it does, by a wide margin.
+
+
+WHY IT NEEDS A CLUSTER
+
+The input is around 3 GB (48,373,586 records, 1,019,318 users, 384,546 songs),
+but the real reason a single machine struggles is the computation, not the file
+size. To compare songs we generate, for each user, a pair for every two songs
+they played. A user with n songs produces n-choose-2 pairs, so active users blow
+up into huge numbers of pairs. On our full run this came out to roughly 387
+million pairs and about 5.2 GB of shuffle. That explosion is why the work has to
+be split across machines, and the same program would run on 10x the data just by
+adding more machines.
+
+
+HOW IT WORKS
+
+The pipeline runs in a few stages, all in Spark RDDs:
+
+- Ingest and re-index. Read the tab-separated triplets (user, song, play count)
+  and map the long hash IDs to small integers, which are much cheaper to shuffle.
+
+- Filter and transform. Drop songs and users with too little data to be reliable,
+  and take a log of the play counts so heavy listeners don't dominate.
+
+- Build user profiles. Group by user to get each user's list of (song, score),
+  capping how many songs one user contributes to keep the pair explosion in check.
+
+- Item-item cosine similarity (the from-scratch core). For each user we emit a
+  record for every pair of songs they played, keyed by the song pair, with the
+  product of the two scores as the value. A reduceByKey sums those products across
+  all users, which gives the dot product (the top of the cosine formula) for each
+  song pair. We compute each song's norm separately and divide to get the cosine
+  similarity. Pairs are always ordered the same way so nothing is double counted,
+  and we guard against divide-by-zero.
+
+- Tame the explosion. We prune pairs that co-occur too rarely and keep only the
+  top-K most similar songs per song, which bounds the model size.
+
+- Recommend. For a user, look up the most-similar songs to everything they've
+  played, add up the similarity-weighted scores, drop songs they already heard,
+  and return the top N.
+
+- Evaluate. For each user we hide half their listening history, build
+  recommendations from the visible half, and measure how much of the hidden half
+  we recover. We compare against a popularity baseline that just recommends the
+  most-played songs to everyone.
+
+
+RESULTS
+
+Run on the full dataset, evaluated over 1,019,139 users with top-10
+recommendations (k = 10):
+
+  Metric      Our model    Popularity baseline    Lift
+  ---------------------------------------------------------
+  Precision   0.233        0.044                  5.3x
+  Recall      0.137        0.028                  4.9x
+  MAP         0.181        0.025                  7.1x
+  F1          0.172        0.034                  5.0x
+
+In plain terms - about 2.3 of every 10 songs we recommended were songs the user
+actually went on to play, and those 10 picks covered roughly 14% of everything
+they played. The popularity baseline lands 5 to 7 times lower on every metric, so
+the model is clearly learning real co-listening structure and not just guessing.
+
+For scale and cost - the full end-to-end evaluation took about 1 hour 37 minutes
+on the cluster, mostly in the pair-generation and shuffle stages described above.
+
+
+TAKEAWAY
+
+The transferable lesson is how a "compare every pair of items" algorithm becomes
+a practical distributed computation - emit contributions locally per user,
+aggregate them globally with reduceByKey, and control the combinatorial blowup
+with filtering and pruning. The music recommendations are the hook, the
+map-emit-then-reduce pattern and the pair-explosion problem are the real lesson.
