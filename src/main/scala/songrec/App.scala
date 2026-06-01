@@ -26,6 +26,13 @@ object App {
       .flatMap { case (u, arr) => arr.map { case (s, w) => s"$u\t$s\t$w" } }
       .saveAsTextFile(output + "/profiles")
 
+    val model = Pipeline.itemItemSimilarity(profiles, p)
+    model.cache()
+
+    model
+      .flatMap { case (s, nbrs) => nbrs.map { case (n, sim) => s"$s\t$n\t$sim" } }
+      .saveAsTextFile(output + "/model")
+
     sc.stop()
   }
 }

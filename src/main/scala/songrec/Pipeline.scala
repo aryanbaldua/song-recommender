@@ -44,4 +44,49 @@ object Pipeline {
     val songMap = songIds.map { case (h, i) => (i, h) }
     (profiles, userMap, songMap)
   }
+
+  def itemItemSimilarity(profiles: RDD[(Int, Array[(Int, Double)])], p: Params)
+      : RDD[(Int, Array[(Int, Double)])] = {
+
+    val sc = profiles.sparkContext
+
+    val norms = profiles
+      .flatMap { case (_, arr) => arr.map { case (s, w) => (s, w * w) } }
+      .reduceByKey(_ + _)
+      .mapValues(math.sqrt)
+    val normBc = sc.broadcast(norms.collectAsMap())
+
+    val pairs = profiles.flatMap { case (_, arr) =>
+      val items = arr.sortBy(_._1)
+      val out = scala.collection.mutable.ArrayBuffer[((Int, Int), (Double, Int))]()
+      var i = 0
+      while (i < items.length) {
+        var j = i + 1
+        while (j < items.length) {
+          out += (((items(i)._1, items(j)._1), (items(i)._2 * items(j)._2, 1)))
+          j += 1
+        }
+        i += 1
+      }
+      out
+    }
+
+    val minCo = p.minCoOccur
+    val topK = p.topK
+
+    val aggregated = pairs
+      .reduceByKey { (a, b) => (a._1 + b._1, a._2 + b._2) }
+      .filter(_._2._2 >= minCo)
+
+    val sims = aggregated.flatMap { case ((a, b), (dot, _)) =>
+      val na = normBc.value.getOrElse(a, 0.0)
+      val nb = normBc.value.getOrElse(b, 0.0)
+      if (na > 0.0 && nb > 0.0) {
+        val sim = dot / (na * nb)
+        Iterator((a, (b, sim)), (b, (a, sim)))
+      } else Iterator.empty
+    }
+
+    sims.groupByKey().mapValues { it => it.toArray.sortBy(-_._2).take(topK) }
+  }
 }
