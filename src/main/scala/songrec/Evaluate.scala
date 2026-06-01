@@ -19,7 +19,7 @@ object Evaluate {
     val p = Params()
     val k = p.topN
 
-    val raw = sc.textFile(input).flatMap(Common.parseTriplet)
+    val raw = sc.textFile(input).map(Common.parseTriplet).filter(_.isDefined).map(_.get)
     val (profiles, _, _) = Pipeline.buildProfiles(raw, p)
 
     val split = Pipeline.splitProfiles(profiles, p.seed)

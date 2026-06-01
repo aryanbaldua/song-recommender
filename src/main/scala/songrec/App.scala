@@ -18,7 +18,7 @@ object App {
 
     val p = Params()
 
-    val raw = sc.textFile(input).flatMap(Common.parseTriplet)
+    val raw = sc.textFile(input).map(Common.parseTriplet).filter(_.isDefined).map(_.get)
     val (profiles, userMap, songMap) = Pipeline.buildProfiles(raw, p)
     profiles.cache()
 
